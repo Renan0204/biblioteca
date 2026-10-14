@@ -41,7 +41,7 @@ public class UsuarioService implements UserDetailsService {
         if (usuario.getPassword() != null && !usuario.getPassword().isBlank()) {
             var pwd = usuario.getPassword();
             if (!(pwd.startsWith("$2a$") || pwd.startsWith("$2b$") || pwd.startsWith("$2y$"))) {
-                usuario.setPassword(passwordEncoder.encode(pwd));
+                usuario.setPassword(pwd);
             }
         }
 
