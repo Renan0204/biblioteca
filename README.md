@@ -5,6 +5,85 @@ Este projeto é uma aplicação web de **Biblioteca** construída com **Spring B
 - **Aplicação Web (Thymeleaf)**: interface HTML com autenticação via **login por formulário**.
 - **API REST (`/api/**`)**: endpoints REST protegidos com **JWT (Bearer Token)**.
 
+## Integração Contínua (Trabalho 5)
+
+[![CI](https://github.com/Renan0204/biblioteca/actions/workflows/ci.yml/badge.svg)](https://github.com/Renan0204/biblioteca/actions/workflows/ci.yml)
+
+Pipeline de CI mínimo e reprodutível com **GitHub Actions**, definido em [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
+### Como reproduzir localmente
+
+Pré-requisito: **JDK 21**. Não é preciso instalar o Maven: o Maven Wrapper (`mvnw`) baixa a versão fixada (3.9.15).
+
+```bash
+./mvnw -B clean verify        # Linux, macOS ou Git Bash
+.\mvnw.cmd -B clean verify    # PowerShell ou CMD
+```
+
+É o **mesmo comando** que o pipeline executa. Ele compila, roda os testes (relatórios em `target/surefire-reports/`) e gera `target/biblioteca-0.0.1-SNAPSHOT.jar`. O build não precisa de nenhuma variável de ambiente.
+
+### Gatilhos
+
+| Evento | O que acontece |
+|---|---|
+| `push` na `master` | Build, testes e publicação do JAR como artefato |
+| `pull_request` para a `master` | Build e testes; se falhar, o merge fica bloqueado |
+| `workflow_dispatch` (manual) | Reexecução para diagnóstico |
+
+### Etapas do job `build-test`
+
+1. **Obter o código** (`actions/checkout`)
+2. **Configurar Java 21** (Temurin) com cache do Maven (`actions/setup-java`)
+3. **Compilar, testar e empacotar** com `./mvnw -B clean verify`
+4. **Armazenar relatórios de teste**: sempre (`if: always()`), inclusive na falha, para diagnóstico
+5. **Armazenar pacote gerado**: só se tudo passou (`if: success()`) e só na `master`
+
+### Artefato e rastreabilidade
+
+- O JAR é publicado como `biblioteca-<SHA do commit>`. O SHA liga o pacote ao commit, à execução e ao resultado dos testes.
+- Em PR, o GitHub testa um commit de merge temporário (`refs/pull/N/merge`) que não existe no histórico. Por isso o pacote oficial só é publicado a partir da `master`.
+- **Cache não é artefato**: o cache do Maven (`~/.m2`) só acelera as próximas execuções; o artefato é a saída verificada do build.
+
+### Tratamento de falhas
+
+- Qualquer comando com código de saída diferente de zero interrompe o job e marca a execução como falha.
+- Com falha, o JAR **não** é publicado; os relatórios do Surefire são.
+- A `master` é protegida: o check `build-test` é obrigatório, então um PR vermelho não pode ser mergeado, nem por administradores.
+- Para diagnosticar: abra a execução, vá até a primeira etapa vermelha, leia a primeira mensagem de erro, baixe `relatorios-<SHA>` e reproduza localmente com `./mvnw -B clean verify`.
+
+### Proteção de segredos
+
+- O segredo que assina os tokens JWT estava escrito no `application.properties`. Agora ele vem da variável de ambiente `JWT_SECRET`, sem valor padrão: se ela faltar, a aplicação não sobe e mostra o motivo.
+- O valor antigo continua no histórico do Git (e no repositório original), então é considerado **comprometido** e não deve ser reutilizado.
+- Os testes usam uma chave falsa declarada no próprio teste. Assim o pipeline **não precisa de nenhum secret** e funciona até em forks.
+- O workflow tem só permissão de leitura (`permissions: contents: read`) e usa apenas actions oficiais do GitHub (`actions/*`), fixadas por versão maior. São versões mais novas que as `@v4` dos slides; fixar pelo SHA do commit seria a opção mais rígida.
+- Se um job futuro (por exemplo, o deploy da Aula 11) precisar do segredo, ele ficará em **Settings → Secrets and variables → Actions** e será lido como `${{ secrets.JWT_SECRET }}`. O GitHub mascara esse valor nos logs.
+- Os usuários `admin/admin` e `user/user` são dados de demonstração do banco H2 em memória, criados para uso local.
+
+Para rodar a aplicação localmente, gere um segredo de pelo menos 32 caracteres:
+
+```bash
+export JWT_SECRET="$(openssl rand -base64 32)"    # Git Bash, Linux ou macOS
+./mvnw spring-boot:run
+```
+
+```powershell
+$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b)
+$env:JWT_SECRET = [Convert]::ToBase64String($b)
+.\mvnw.cmd spring-boot:run
+```
+
+### Problemas encontrados no diagnóstico local
+
+| Problema | Efeito no CI | Correção |
+|---|---|---|
+| `mvnw` sem permissão de execução no Git (modo `100644`) | `Permission denied` no runner Linux | `git update-index --chmod=+x mvnw` |
+| O projeto usa Java 21 (o exemplo dos slides usa 17) | `release version 21 not supported` | `java-version: "21"` |
+| A branch principal é `master` (o exemplo usa `main`) | O pipeline não dispararia no push | `branches: [master]` |
+| Segredo JWT no código | Credencial exposta no repositório | Variável de ambiente `JWT_SECRET` |
+| Só existia o teste `contextLoads` | Falha controlada pouco realista | Novo `UsuarioServiceTest` (senha salva com BCrypt) |
+| Push recusado: o token do `gh` não tinha o escopo `workflow` | O GitHub não aceita criar `.github/workflows/*` sem esse escopo | `gh auth refresh -h github.com -s workflow` |
+
 ## Arquitetura
 
 A aplicação segue uma arquitetura em camadas (MVC + Service + Repository), com separação por pacotes:
@@ -93,8 +172,9 @@ Conforme o `pom.xml`:
 
 - **H2**: `spring.datasource.url=jdbc:h2:mem:banco`
 - **Console H2**: `spring.h2.console.path=/h2-console`
-- **Segredo JWT**: `api.security.token.secret=...`
+- **Segredo JWT**: `api.security.token.secret=${JWT_SECRET}`
   - Este valor é usado para assinar e validar tokens (HMAC SHA-256).
+  - Vem da variável de ambiente `JWT_SECRET` (veja [Proteção de segredos](#proteção-de-segredos)).
 
 ## Autenticação e autorização (detalhamento)
 
@@ -114,7 +194,7 @@ O projeto define **duas cadeias de filtros** (`SecurityFilterChain`) separadas:
 
 ### 2) Propriedade `secret` (`@Value("${api.security.token.secret}")`)
 
-- Lê o segredo definido em `application.properties`.
+- Lê o segredo definido em `application.properties`, que o obtém da variável de ambiente `JWT_SECRET`.
 - É usado para criar as chaves de **assinatura** e **validação** do JWT (algoritmo HS256).
 
 ### 3) Cadeia da API: `apiFilterChain(HttpSecurity http)`
@@ -226,7 +306,7 @@ Em `BibliotecaApplication`, existe um `CommandLineRunner` que cria dois usuário
 
 ## Como executar
 
-- Executar a aplicação:
+- Executar a aplicação (antes, defina `JWT_SECRET`, como em [Proteção de segredos](#proteção-de-segredos)):
   - `./mvnw spring-boot:run`
 - Acessos:
   - **Site**: `http://localhost:8080/`

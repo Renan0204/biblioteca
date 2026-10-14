@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obter o código
+        uses: actions/checkout@v7
+
+      - name: Configurar Java 21 com cache do Maven
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Compilar, testar e empacotar
+        run: ./mvnw -B clean verify
+
+      - name: Armazenar relatórios de teste
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorios-${{ github.sha }}
+          path: target/surefire-reports/
+          if-no-files-found: warn
+          overwrite: true
+
+      # Em PR o GitHub testa um commit de merge temporário (refs/pull/N/merge),
+      # então o pacote oficial só é publicado a partir da master.
+      - name: Armazenar pacote gerado
+        if: success() && github.ref == 'refs/heads/master'
+        uses: actions/upload-artifact@v7
+        with:
+          name: biblioteca-${{ github.sha }}
+          path: target/*.jar
+          if-no-files-found: error
+          overwrite: true
