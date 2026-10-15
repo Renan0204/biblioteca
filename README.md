@@ -84,6 +84,16 @@ $env:JWT_SECRET = [Convert]::ToBase64String($b)
 | Só existia o teste `contextLoads` | Falha controlada pouco realista | Novo `UsuarioServiceTest` (senha salva com BCrypt) |
 | Push recusado: o token do `gh` não tinha o escopo `workflow` | O GitHub não aceita criar `.github/workflows/*` sem esse escopo | `gh auth refresh -h github.com -s workflow` |
 
+### Evidências
+
+| Execução | Evento | Commit | Resultado | O que mostra |
+|---|---|---|---|---|
+| [#1](https://github.com/Renan0204/biblioteca/actions/runs/38657109664) | push na `master` | [`32df1db`](https://github.com/Renan0204/biblioteca/commit/32df1db7b2c55009e87a5245992becf815bb0f48) | ✅ sucesso | 2 testes aprovados; artefatos `biblioteca-32df1db…` (JAR) e `relatorios-32df1db…` |
+| [#2](https://github.com/Renan0204/biblioteca/actions/runs/38657253390) | PR [#1](https://github.com/Renan0204/biblioteca/pull/1) | [`4f6bb8d`](https://github.com/Renan0204/biblioteca/commit/4f6bb8d5016971b45f10f2e43e7928ee70d240e7) | ❌ falha | Falha controlada: `UsuarioServiceTest` reprova com "a senha não pode ser salva em texto puro"; JAR não publicado; merge bloqueado |
+| [#3](https://github.com/Renan0204/biblioteca/actions/runs/38657338571) | PR [#1](https://github.com/Renan0204/biblioteca/pull/1) | [`66e4a5e`](https://github.com/Renan0204/biblioteca/commit/66e4a5e028f723a8712b1d9fffa6a6b88bfcbec9) | ✅ sucesso | Correção: 2 testes aprovados; merge liberado |
+
+Depois do merge do PR #1, a execução da `master` publica o JAR do commit de merge. O histórico completo está em [Actions → CI](https://github.com/Renan0204/biblioteca/actions/workflows/ci.yml). Logs e artefatos ficam disponíveis por 90 dias.
+
 ## Arquitetura
 
 A aplicação segue uma arquitetura em camadas (MVC + Service + Repository), com separação por pacotes:
