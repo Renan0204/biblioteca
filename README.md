@@ -94,6 +94,10 @@ $env:JWT_SECRET = [Convert]::ToBase64String($b)
 
 Depois do merge do PR #1, a execução da `master` publica o JAR do commit de merge. O histórico completo está em [Actions → CI](https://github.com/Renan0204/biblioteca/actions/workflows/ci.yml). Logs e artefatos ficam disponíveis por 90 dias.
 
+## Observabilidade, alta disponibilidade e DR (Trabalho 7)
+
+A proposta completa está em [`docs/T7-observabilidade-ha-dr.md`](docs/T7-observabilidade-ha-dr.md). Ela cobre a arquitetura em EKS multi-AZ, SLIs e SLOs, painel, alertas, RPO e RTO, a estratégia de DR, o runbook e os ajustes que a aplicação precisa para rodar com várias réplicas.
+
 ## Arquitetura
 
 A aplicação segue uma arquitetura em camadas (MVC + Service + Repository), com separação por pacotes:
